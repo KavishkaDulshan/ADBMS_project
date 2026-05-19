@@ -1,7 +1,6 @@
 const { getDBPool, sql } = require('../config/db');
 
 // GET all suppliers — rich query with contact info, address & total spend
-// (merged from analytics-backend branch)
 exports.getSuppliers = async (req, res) => {
     try {
         const pool = await getDBPool();
@@ -15,14 +14,14 @@ exports.getSuppliers = async (req, res) => {
                 sa.City,
                 sa.Province,
                 (
-                    SELECT TOP 1 ContactValue 
-                    FROM SupplierContact 
-                    WHERE SupplierID = s.SupplierID AND ContactType = 'Email'
+                    SELECT TOP 1 sc.Email 
+                    FROM SupplierContact sc
+                    WHERE sc.SupplierID = s.SupplierID AND sc.IsPrimary = 1
                 ) AS Email,
                 (
-                    SELECT TOP 1 ContactValue 
-                    FROM SupplierContact 
-                    WHERE SupplierID = s.SupplierID AND ContactType = 'Phone'
+                    SELECT TOP 1 sc.Phone 
+                    FROM SupplierContact sc
+                    WHERE sc.SupplierID = s.SupplierID AND sc.IsPrimary = 1
                 ) AS Phone,
                 ISNULL((
                     SELECT SUM(TotalAmount) 

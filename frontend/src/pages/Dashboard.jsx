@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import Layout from '../components/layout/Layout';
 import Card from '../components/ui/Card';
 import { useDashboard } from '../hooks/useDashboard';
@@ -31,7 +32,26 @@ const Dashboard = () => {
     );
   }
 
-  const { stats, categorySpend, topSuppliers, paymentMethods, alerts, recentActivity } = data;
+  // Safe destructuring with robust default values
+  const stats = data.stats || {
+    totalExpenses: 0,
+    dailySpend: 0,
+    activeSuppliers: 0,
+    pendingApprovals: 0,
+    pendingApprovalsValue: 0,
+    budgetUtilization: 0,
+    activePeriod: { month: new Date().getMonth() + 1, year: new Date().getFullYear() }
+  };
+  
+  if (!stats.activePeriod) {
+    stats.activePeriod = { month: new Date().getMonth() + 1, year: new Date().getFullYear() };
+  }
+
+  const categorySpend = data.categorySpend || [];
+  const topSuppliers = data.topSuppliers || [];
+  const paymentMethods = data.paymentMethods || [];
+  const alertsList = data.alerts || [];
+  const recentActivity = data.recentActivity || [];
 
   const displayStats = [
     { label: `MTD Spend (${stats.activePeriod.month}/${stats.activePeriod.year})`, value: `Rs. ${(stats.totalExpenses || 0).toLocaleString()}`, icon: <DollarSign size={24}/>, color: 'text-blue-600', bg: 'bg-blue-100' },
@@ -40,20 +60,213 @@ const Dashboard = () => {
     { label: 'Pending Approvals', value: `${stats.pendingApprovals} (Rs. ${(stats.pendingApprovalsValue || 0).toLocaleString()})`, icon: <Clock size={24}/>, color: 'text-orange-600', bg: 'bg-orange-100' },
   ];
 
+  // Calculate dynamic health score
+  const healthScore = Math.max(
+    0,
+    100 - (alertsList.filter(a => a.EventType === 'Budget Alert').length * 25) - (alertsList.filter(a => a.EventType === 'System Notice').length * 15)
+  );
+
   return (
     <Layout title="Dashboard">
-      {/* Dynamic Alerts Banner */}
-      {alerts && alerts.length > 0 && (
-        <div className="mb-6 space-y-2">
-          {alerts.map((alert, idx) => (
-            <div key={idx} className={`p-4 rounded-xl flex items-center gap-3 border ${alert.EventType === 'Budget Alert' ? 'bg-red-50 border-red-200 text-red-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
-              <AlertCircle size={20} className={alert.EventType === 'Budget Alert' ? 'text-red-600' : 'text-amber-600'} />
-              <span className="font-medium text-sm">{alert.Message}</span>
-              <span className="text-xs opacity-70 ml-auto">{new Date(alert.DateEvent).toLocaleDateString()}</span>
+      {/* Visual Alerts & Intelligence Hub */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        {/* System Health Gauge (Graphical Representation) */}
+        <div className="lg:col-span-1 bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col justify-between relative overflow-hidden group">
+          {/* Decorative subtle background gradient glow */}
+          <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 rounded-full bg-blue-50 blur-xl group-hover:bg-blue-100 transition-colors duration-500"></div>
+          
+          <div>
+            <h3 className="text-base font-bold text-gray-800 mb-1 flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 animate-pulse"></span>
+              Operational Control Center
+            </h3>
+            <p className="text-xs text-gray-500">Real-time budget integrity & compliance metrics.</p>
+          </div>
+
+          {/* Graphical Radial/Linear Health Meter */}
+          <div className="my-6 flex flex-col items-center justify-center">
+            {/* Custom SVG Circular Gauge */}
+            <div className="relative w-36 h-36 flex items-center justify-center">
+              <svg className="w-full h-full transform -rotate-90">
+                {/* Background Ring */}
+                <circle
+                  cx="72"
+                  cy="72"
+                  r="58"
+                  className="stroke-gray-100"
+                  strokeWidth="10"
+                  fill="transparent"
+                />
+                {/* Foreground Ring with Dynamic Dasharray */}
+                <circle
+                  cx="72"
+                  cy="72"
+                  r="58"
+                  stroke={
+                    healthScore >= 90
+                      ? '#10b981' // Green
+                      : healthScore >= 60
+                      ? '#f59e0b' // Amber
+                      : '#ef4444' // Red
+                  }
+                  strokeWidth="10"
+                  fill="transparent"
+                  strokeDasharray={364.4}
+                  strokeDashoffset={364.4 - (364.4 * healthScore) / 100}
+                  strokeLinecap="round"
+                  className="transition-all duration-1000 ease-out"
+                />
+              </svg>
+              <div className="absolute flex flex-col items-center justify-center">
+                <span className="text-3xl font-black text-gray-800">
+                  {healthScore}
+                </span>
+                <span className="text-[10px] uppercase font-bold tracking-widest text-gray-400">Health Index</span>
+              </div>
             </div>
-          ))}
+
+            {/* Status Tags */}
+            <div className="mt-4 text-center">
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
+                healthScore >= 90
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                  : healthScore >= 60
+                  ? 'bg-amber-50 text-amber-700 border border-amber-200' 
+                  : 'bg-rose-50 text-rose-700 border border-rose-200'
+              }`}>
+                <span className={`w-2 h-2 rounded-full ${
+                  healthScore >= 90 ? 'bg-emerald-500' : healthScore >= 60 ? 'bg-amber-500' : 'bg-rose-500'
+                }`}></span>
+                {healthScore >= 90 
+                  ? 'System Fully Optimal' 
+                  : healthScore >= 60
+                  ? 'System Warnings Active' 
+                  : 'Critical Attention Needed'}
+              </span>
+            </div>
+          </div>
+
+          <div className="text-center text-xs text-gray-500 px-2 leading-relaxed mt-2">
+            {healthScore >= 90 
+              ? "All departments are running within allocated thresholds. Excellent budget discipline."
+              : healthScore >= 60
+              ? "Moderate spending alerts have been triggered. Keep track of pending approvals."
+              : "Critical budget overruns detected in department categories! Review allocations immediately."}
+          </div>
         </div>
-      )}
+
+        {/* Graphical Active Alerts Timeline / Feed */}
+        <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col justify-between">
+          <div>
+            <div className="flex justify-between items-center mb-3">
+              <div>
+                <h3 className="text-base font-bold text-gray-800 flex items-center gap-2">
+                  Active Alerts & Compliance Center
+                </h3>
+                <p className="text-xs text-gray-500">Live feed of automated notifications and system checks.</p>
+              </div>
+              <span className="bg-gray-100 text-gray-600 text-xs px-2.5 py-1 rounded-full font-semibold">
+                {alertsList.length} Triggered
+              </span>
+            </div>
+
+            {/* Alert Cards List */}
+            <div className="space-y-3 max-h-[260px] overflow-y-auto pr-1">
+              {alertsList.map((alert, idx) => {
+                const isBudget = alert.EventType === 'Budget Alert';
+                return (
+                  <div 
+                    key={idx} 
+                    className={`group/card p-4 rounded-xl border transition-all duration-300 hover:shadow-md hover:translate-x-1 ${
+                      isBudget 
+                        ? 'bg-rose-50/40 border-rose-100 hover:bg-rose-50' 
+                        : 'bg-amber-50/40 border-amber-100 hover:bg-amber-50'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      {/* Interactive Visual Badge */}
+                      <div className={`p-2.5 rounded-xl shadow-sm ${isBudget ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600'}`}>
+                        {isBudget ? <DollarSign size={18} /> : <Clock size={18} />}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-start">
+                          <span className={`text-[10px] font-bold tracking-wider uppercase ${isBudget ? 'text-rose-700' : 'text-amber-700'}`}>
+                            {alert.EventType}
+                          </span>
+                          <span className="text-[10px] text-gray-400 font-medium">
+                            {new Date(alert.DateEvent).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <p className="text-sm font-semibold text-gray-800 mt-1 leading-snug">
+                          {alert.Message}
+                        </p>
+
+                        {/* GRAPHICAL COMPONENT INSIDE THE ALERT CARD */}
+                        <div className="mt-3">
+                          {isBudget ? (
+                            <div>
+                              {/* Sleek Progress Bar showing > 90% */}
+                              <div className="flex justify-between items-center text-xs font-semibold text-gray-600 mb-1">
+                                <span>Category Budget Spent</span>
+                                <span className="text-rose-600">92% (Exceeded Threshold)</span>
+                              </div>
+                              <div className="w-full bg-gray-200/70 rounded-full h-2 overflow-hidden">
+                                <div className="h-full bg-gradient-to-r from-amber-500 to-rose-600 rounded-full animate-pulse" style={{ width: '92%' }}></div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div>
+                              {/* Workflow Approval Pipeline */}
+                              <div className="flex items-center gap-2 text-xs font-semibold text-gray-500 mb-1">
+                                <span>Process Stage:</span>
+                                <span className="bg-amber-100 text-amber-800 text-[10px] px-2 py-0.5 rounded-full font-bold">Audit Review Required</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                                <span className="text-emerald-600">1. Logged</span>
+                                <span>➔</span>
+                                <span className="text-amber-600 animate-pulse">2. Pending Approval</span>
+                                <span>➔</span>
+                                <span>3. Paid</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Dynamic Resolution Link Button */}
+                      <div className="self-center">
+                        <Link 
+                          to={isBudget ? "/budget" : "/approvals"}
+                          className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                            isBudget 
+                              ? 'bg-rose-600 text-white hover:bg-rose-700 shadow-sm shadow-rose-200' 
+                              : 'bg-amber-500 text-white hover:bg-amber-600 shadow-sm shadow-amber-200'
+                          }`}
+                        >
+                          {isBudget ? 'Adjust' : 'Authorize'}
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {alertsList.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-10 text-center">
+                  <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-500 flex items-center justify-center mb-2">
+                    <CheckCircle size={24} />
+                  </div>
+                  <h4 className="text-sm font-bold text-gray-800">No warnings or notices active</h4>
+                  <p className="text-xs text-gray-400 max-w-[280px] mt-0.5">
+                    Your financial pipelines are clear. Keep up the great management!
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
 
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">

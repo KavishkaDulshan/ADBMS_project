@@ -11,6 +11,24 @@ export const getExpenseTrends = async (year) => {
   }
 };
 
+export const getAnalytics = async () => {
+  try {
+    const res = await api.get('/analytics');
+    return res.data;
+  } catch (error) {
+    console.error('Analytics BI fetch failed:', error);
+    return {
+      historicalTrends: getMockTrendData(),
+      forecast: 14500.00,
+      supplierProfiles: [
+        { SupplierName: 'Acme Corp', TotalSupplied: 12, RejectionRate: 8.3, AvgLeadTimeDays: 4 },
+        { SupplierName: 'Global Industries', TotalSupplied: 8, RejectionRate: 0.0, AvgLeadTimeDays: 2 }
+      ],
+      efficiencyKPIs: { RejectionRate: 4.5, AvgApprovalDays: 3 }
+    };
+  }
+};
+
 // Hardcoded fallback data
 const getMockTrendData = () => [
   { MonthName: 'January',  CategoryName: 'Stock Purchase', TotalSpent: 2100 },
@@ -29,3 +47,4 @@ const getMockTrendData = () => [
   { MonthName: 'March',    CategoryName: 'Rent',           TotalSpent: 1000 },
   { MonthName: 'March',    CategoryName: 'Transport',      TotalSpent: 250  },
 ];
+
