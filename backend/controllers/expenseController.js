@@ -152,7 +152,7 @@ exports.getExpenseById = async (req, res) => {
                     eli.UnitPrice,
                     eli.LineTotal
                 FROM ExpenseLineItem eli
-                INNER JOIN Item i ON i.ItemID = eli.ItemID
+                LEFT JOIN Item i ON i.ItemID = eli.ItemID
                 INNER JOIN ExpenseCategory ec ON ec.ExpenseCategoryID = eli.ExpenseCategoryID
                 WHERE eli.ExpenseID = @expenseId
                 ORDER BY eli.LineItemID
@@ -209,6 +209,7 @@ exports.createExpense = async (req, res) => {
         try {
             await ensureDateDimensionRow(transaction, parsedDate, resolvedDateKey);
 
+            // Using SCOPE_IDENTITY() which is safe with triggers unlike OUTPUT INSERTED
             const expenseInsertResult = await new sql.Request(transaction)
                 .input('dateKey', sql.Int, resolvedDateKey)
                 .input('supplierId', sql.Int, supplierId)
@@ -222,23 +223,24 @@ exports.createExpense = async (req, res) => {
                         DateKey, SupplierID, EmployeeID,
                         PaymentMethodID, StatusID, TotalAmount, Description
                     )
-                    OUTPUT INSERTED.ExpenseID
                     VALUES (
                         @dateKey, @supplierId, @employeeId,
                         @paymentMethodId, @statusId, @totalAmount, @description
-                    )
+                    );
+                    SELECT CAST(SCOPE_IDENTITY() AS INT) AS ExpenseID;
                 `);
 
             const expenseId = expenseInsertResult.recordset[0].ExpenseID;
 
             if (Array.isArray(lineItems) && lineItems.length > 0) {
                 for (const item of lineItems) {
-                    const itemId = Number.parseInt(item.itemId ?? item.ItemID, 10);
-                    const categoryId = Number.parseInt(item.expenseCategoryId ?? item.ExpenseCategoryID, 10);
-                    const quantity = Number.parseInt(item.quantity ?? item.Quantity, 10);
+                    const itemIdRaw = item.itemId ?? item.ItemID;
+                    const itemId = (itemIdRaw === null || itemIdRaw === undefined || itemIdRaw === '') ? null : Number.parseInt(itemIdRaw, 10);
+                    const categoryId = Number.parseInt(item.categoryId ?? item.expenseCategoryId ?? item.ExpenseCategoryID, 10);
+                    const quantity = Number.parseInt(item.quantity ?? item.Quantity, 10) || 1;
                     const unitPrice = Number(item.unitPrice ?? item.UnitPrice);
 
-                    if ([itemId, categoryId, quantity].some((value) => Number.isNaN(value)) || Number.isNaN(unitPrice)) {
+                    if (Number.isNaN(categoryId) || Number.isNaN(unitPrice)) {
                         throw new Error('Invalid line item supplied.');
                     }
 
@@ -257,6 +259,10 @@ exports.createExpense = async (req, res) => {
                             )
                         `);
                 }
+            } else {
+                // If there are no line items (e.g. general expense), we can insert a default line item
+                // to maintain the category if we have a way to pass categoryId.
+                // Or maybe the frontend SHOULD send one line item even for general expenses.
             }
 
             await transaction.commit();
@@ -274,6 +280,113 @@ exports.createExpense = async (req, res) => {
     } catch (err) {
         console.error(`[${timestamp}] [EXPENSES] [ERROR] Failed to create expense:`, err);
         res.status(500).json({ message: err.message || 'Server error while creating expense.' });
+    }
+};
+
+exports.createMultipleExpenses = async (req, res) => {
+    const timestamp = new Date().toISOString();
+
+    try {
+        const expenses = req.body.expenses;
+        if (!Array.isArray(expenses) || expenses.length === 0) {
+            return res.status(400).json({ message: 'An array of expenses is required.' });
+        }
+
+        const pool = await getDBPool();
+        const transaction = new sql.Transaction(pool);
+
+        await transaction.begin();
+        const createdExpenseIds = [];
+
+        try {
+            for (const expense of expenses) {
+                const {
+                    description,
+                    totalAmount,
+                    supplierId = null,
+                    employeeId = DEFAULT_EMPLOYEE_ID,
+                    paymentMethodId = DEFAULT_PAYMENT_METHOD_ID,
+                    statusId = DEFAULT_STATUS_ID,
+                    expenseDate,
+                    lineItems = []
+                } = expense;
+
+                const parsedAmount = Number(totalAmount);
+                if (Number.isNaN(parsedAmount) || parsedAmount < 0) {
+                    throw new Error('Total amount must be a valid non-negative number.');
+                }
+
+                const parsedDate = parseDateValue(expenseDate);
+                const resolvedDateKey = formatDateKey(parsedDate);
+
+                await ensureDateDimensionRow(transaction, parsedDate, resolvedDateKey);
+
+                const expenseInsertResult = await new sql.Request(transaction)
+                    .input('dateKey', sql.Int, resolvedDateKey)
+                    .input('supplierId', sql.Int, supplierId)
+                    .input('employeeId', sql.Int, employeeId)
+                    .input('paymentMethodId', sql.Int, paymentMethodId)
+                    .input('statusId', sql.Int, statusId)
+                    .input('totalAmount', sql.Decimal(18, 2), parsedAmount)
+                    .input('description', sql.VarChar(255), description)
+                    .query(`
+                        INSERT INTO ExpenseHeader (
+                            DateKey, SupplierID, EmployeeID,
+                            PaymentMethodID, StatusID, TotalAmount, Description
+                        )
+                        VALUES (
+                            @dateKey, @supplierId, @employeeId,
+                            @paymentMethodId, @statusId, @totalAmount, @description
+                        );
+                        SELECT CAST(SCOPE_IDENTITY() AS INT) AS ExpenseID;
+                    `);
+
+                const expenseId = expenseInsertResult.recordset[0].ExpenseID;
+                createdExpenseIds.push(expenseId);
+
+                if (Array.isArray(lineItems) && lineItems.length > 0) {
+                    for (const item of lineItems) {
+                        const itemIdRaw = item.itemId ?? item.ItemID;
+                        const itemId = (itemIdRaw === null || itemIdRaw === undefined || itemIdRaw === '') ? null : Number.parseInt(itemIdRaw, 10);
+                        const categoryId = Number.parseInt(item.categoryId ?? item.expenseCategoryId ?? item.ExpenseCategoryID, 10);
+                        const quantity = Number.parseInt(item.quantity ?? item.Quantity, 10) || 1;
+                        const unitPrice = Number(item.unitPrice ?? item.UnitPrice);
+
+                        if (Number.isNaN(categoryId) || Number.isNaN(unitPrice)) {
+                            throw new Error('Invalid line item supplied.');
+                        }
+
+                        await new sql.Request(transaction)
+                            .input('expenseId', sql.Int, expenseId)
+                            .input('itemId', sql.Int, itemId)
+                            .input('categoryId', sql.Int, categoryId)
+                            .input('quantity', sql.Int, quantity)
+                            .input('unitPrice', sql.Decimal(18, 2), unitPrice)
+                            .query(`
+                                INSERT INTO ExpenseLineItem (
+                                    ExpenseID, ItemID, ExpenseCategoryID, Quantity, UnitPrice
+                                )
+                                VALUES (
+                                    @expenseId, @itemId, @categoryId, @quantity, @unitPrice
+                                )
+                            `);
+                    }
+                }
+            }
+
+            await transaction.commit();
+
+            res.status(201).json({
+                message: 'Multiple expenses created successfully.',
+                expenseIds: createdExpenseIds
+            });
+        } catch (transactionError) {
+            await transaction.rollback();
+            throw transactionError;
+        }
+    } catch (err) {
+        console.error(`[${timestamp}] [EXPENSES] [ERROR] Failed to bulk create expenses:`, err);
+        res.status(500).json({ message: err.message || 'Server error while creating multiple expenses.' });
     }
 };
 
