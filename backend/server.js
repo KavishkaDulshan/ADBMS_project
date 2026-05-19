@@ -18,7 +18,10 @@ connectDB();
 
 // Routes
 const authRoutes = require('./routes/authRoutes');
+const budgetRoutes = require('./routes/budget');
+
 app.use('/api/auth', authRoutes);
+app.use('/api/budget', budgetRoutes);
 
 // Base route
 app.get('/', (req, res) => {
