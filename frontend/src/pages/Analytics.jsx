@@ -1,161 +1,109 @@
-import { useState } from 'react';
+import React from 'react';
 import Layout from '../components/layout/Layout';
-import { useAnalytics } from '../hooks/useAnalytics';
-import TrendLineChart from '../components/charts/TrendLineChart';
 import Card from '../components/ui/Card';
-import Badge from '../components/ui/Badge';
+import TrendLineChart from '../components/charts/TrendLineChart';
+import { useAnalytics } from '../hooks/useAnalytics';
+import { Loader2, TrendingUp, Lightbulb, Users, Target } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
-export default function Analytics() {
-  const [year, setYear]         = useState(2026);
-  const [category, setCategory] = useState('all');
+const Analytics = () => {
+  const { analytics, loading, error } = useAnalytics();
 
-  const { chartData, categories, loading, error, kpis } = useAnalytics(year);
+  if (loading) {
+    return (
+      <Layout title="Analytics BI & Forecasting">
+        <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+          <Loader2 className="animate-spin mb-4" size={48} />
+          <p className="text-lg font-medium">Running T-SQL regression models...</p>
+        </div>
+      </Layout>
+    );
+  }
 
-  const filteredData = category === 'all'
-    ? chartData
-    : chartData.map(row => ({
-        month: row.month,
-        [category]: row[category]
-      }));
+  if (error) {
+    return (
+      <Layout title="Analytics BI">
+        <div className="bg-red-50 text-red-700 p-6 rounded-lg text-center font-bold">
+          Error loading analytics: {error}
+        </div>
+      </Layout>
+    );
+  }
 
-  const visibleCategories = category === 'all' ? categories : [category];
+  const { historicalTrends, forecast, supplierProfiles, efficiencyKPIs } = analytics;
 
-  if (loading) return (
-    <Layout title="Analytics BI">
-      <div className="flex items-center justify-center h-64">
-        <p className="text-gray-400">Loading analytics...</p>
-      </div>
-    </Layout>
-  );
-
-  if (error) return (
-    <Layout title="Analytics BI">
-      <div className="flex items-center justify-center h-64">
-        <p className="text-red-400">Failed to load analytics</p>
-      </div>
-    </Layout>
-  );
+  // Enhance trend data with the forecast point for the chart
+  const combinedTrendData = [...historicalTrends.map(t => ({ name: t.MonthName, amount: t.TotalSpend, isForecast: false }))];
+  if (forecast > 0) {
+    const nextMonthLabel = new Date(new Date().setMonth(new Date().getMonth() + 1)).toLocaleString('default', { month: 'long' });
+    combinedTrendData.push({ name: nextMonthLabel + ' (Projected)', amount: forecast, isForecast: true });
+  }
 
   return (
-    <Layout title="Analytics BI">
-      <div className="space-y-6">
-
-        {/* Header */}
-        <div className="flex items-center justify-between flex-wrap gap-4">
+    <Layout title="Analytics BI & Forecasting">
+      <div className="space-y-8">
+        {/* Dynamic BI Suggestion Box */}
+        <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl p-6 text-white shadow-lg flex gap-4 items-start">
+          <Lightbulb size={32} className="text-yellow-300 shrink-0" />
           <div>
-            <h1 className="text-2xl font-semibold text-gray-900">
-              Expense Trend Analysis
-            </h1>
-            <p className="text-sm text-gray-500 mt-1">
-              Monthly spending breakdown — Vaultix
+            <h3 className="font-bold text-lg mb-1">Automated System Insight</h3>
+            <p className="opacity-90 text-sm">
+              Based on historical data and seasonal cursor averages, we project next month's spending to be around <strong className="text-white">Rs. {forecast.toLocaleString()}</strong>. 
+              The system rejection rate is currently <strong className="text-white">{efficiencyKPIs.RejectionRate}%</strong> with an average turnaround time of {efficiencyKPIs.AvgApprovalDays} days.
             </p>
-          </div>
-          <div className="flex gap-3 items-center flex-wrap">
-            <select
-              value={year}
-              onChange={e => setYear(Number(e.target.value))}
-              className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-700"
-            >
-              <option value={2026}>2026</option>
-              <option value={2025}>2025</option>
-            </select>
-            <select
-              value={category}
-              onChange={e => setCategory(e.target.value)}
-              className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-700"
-            >
-              <option value="all">All categories</option>
-              {categories.map(c => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
           </div>
         </div>
 
-        {/* KPI Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card>
-            <p className="text-xs text-gray-500">Total Spent (YTD)</p>
-            <p className="text-2xl font-semibold mt-1">
-              ${kpis.totalSpent.toLocaleString()}
-            </p>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <Card title="Historical Spend & T-SQL Projection" className="border-none shadow-sm">
+            <TrendLineChart data={combinedTrendData} color="#8b5cf6" />
           </Card>
-          <Card>
-            <p className="text-xs text-gray-500">Monthly Average</p>
-            <p className="text-2xl font-semibold mt-1">
-              ${kpis.monthlyAvg.toLocaleString()}
-            </p>
-          </Card>
-          <Card>
-            <p className="text-xs text-gray-500">Highest Month</p>
-            <p className="text-2xl font-semibold mt-1">
-              {kpis.highestMonth.month}
-            </p>
-            <p className="text-xs text-gray-400">
-              ${kpis.highestMonth.total.toLocaleString()}
-            </p>
-          </Card>
-          <Card>
-            <p className="text-xs text-gray-500">Lowest Month</p>
-            <p className="text-2xl font-semibold mt-1">
-              {kpis.lowestMonth.month}
-            </p>
-            <p className="text-xs text-gray-400">
-              ${kpis.lowestMonth.total === Infinity ? '—' : kpis.lowestMonth.total?.toLocaleString()}
-            </p>
+          
+          <Card title="Supplier Volume & Efficiency" className="border-none shadow-sm">
+            <div className="h-[300px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={supplierProfiles} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="SupplierName" tick={{fontSize: 10, fill: '#64748b'}} interval={0} angle={-45} textAnchor="end" height={80} />
+                  <YAxis yAxisId="left" tickFormatter={(val) => `Rs.${val/1000}k`} stroke="#3b82f6" tick={{fontSize: 12}} />
+                  <YAxis yAxisId="right" orientation="right" stroke="#10b981" tick={{fontSize: 12}} />
+                  <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                  <Bar yAxisId="left" dataKey="TotalValue" fill="#3b82f6" name="Total Spend" radius={[4, 4, 0, 0]} />
+                  <Bar yAxisId="right" dataKey="TotalOrders" fill="#10b981" name="Order Count" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </Card>
         </div>
-
-        {/* Chart */}
-        <Card title="Monthly spending by category">
-          <TrendLineChart
-            data={filteredData}
-            categories={visibleCategories}
-          />
-        </Card>
-
-        {/* Summary Table */}
-        <Card title="Monthly summary">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="text-left py-2 px-3 text-gray-500 font-medium">Month</th>
-                  {visibleCategories.map(c => (
-                    <th key={c} className="text-left py-2 px-3 text-gray-500 font-medium">{c}</th>
-                  ))}
-                  <th className="text-left py-2 px-3 text-gray-500 font-medium">Total</th>
-                  <th className="text-left py-2 px-3 text-gray-500 font-medium">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredData.map((row, i) => {
-                  const total = visibleCategories.reduce((s, c) => s + (row[c] || 0), 0);
-                  const avg = kpis.monthlyAvg;
-                  const isOver = total > avg * 1.05;
-                  return (
-                    <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
-                      <td className="py-2 px-3 font-medium">{row.month}</td>
-                      {visibleCategories.map(c => (
-                        <td key={c} className="py-2 px-3">
-                          ${(row[c] || 0).toLocaleString()}
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 font-medium">${total.toLocaleString()}</td>
-                      <td className="py-2 px-3">
-                        <Badge variant={isOver ? 'red' : 'green'}>
-                          {isOver ? 'Over' : 'On track'}
-                        </Badge>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        
+        <Card title="Process Efficiency Metrics" className="border-none shadow-sm">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="p-5 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-100 flex items-center gap-4">
+              <div className="p-3 bg-blue-500 text-white rounded-lg"><TrendingUp size={24}/></div>
+              <div>
+                <p className="text-xs text-blue-800 uppercase font-bold mb-1">Forecast Algorithm</p>
+                <p className="text-lg font-bold text-gray-800">3-Mo. Seasonal Moving Avg</p>
+              </div>
+            </div>
+            <div className="p-5 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl border border-emerald-100 flex items-center gap-4">
+              <div className="p-3 bg-emerald-500 text-white rounded-lg"><Target size={24}/></div>
+              <div>
+                <p className="text-xs text-emerald-800 uppercase font-bold mb-1">Approval Turnaround</p>
+                <p className="text-lg font-bold text-gray-800">{efficiencyKPIs.AvgApprovalDays} Days</p>
+              </div>
+            </div>
+            <div className="p-5 bg-gradient-to-br from-rose-50 to-orange-50 rounded-xl border border-rose-100 flex items-center gap-4">
+              <div className="p-3 bg-rose-500 text-white rounded-lg"><Users size={24}/></div>
+              <div>
+                <p className="text-xs text-rose-800 uppercase font-bold mb-1">Rejection Rate</p>
+                <p className="text-lg font-bold text-gray-800">{efficiencyKPIs.RejectionRate}%</p>
+              </div>
+            </div>
           </div>
         </Card>
-
       </div>
     </Layout>
   );
-}
+};
+
+export default Analytics;
