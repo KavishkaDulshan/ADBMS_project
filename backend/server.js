@@ -20,10 +20,12 @@ connectDB();
 const authRoutes = require('./routes/authRoutes');
 const budgetRoutes = require('./routes/budget');
 const analyticsRoutes = require('./routes/analytics');
+const supplierRoutes = require('./routes/suppliers');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/budget', budgetRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/suppliers', supplierRoutes);
 
 // Base route
 app.get('/', (req, res) => {
