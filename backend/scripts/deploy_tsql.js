@@ -535,7 +535,16 @@ BEGIN
         RETURN;
     END
 
-    -- For non-approved expenses, safely cascade the delete
+    -- For non-approved expenses, perform the actual delete cascade
+    DELETE FROM BudgetAlert
+    WHERE BudgetID IN (
+        SELECT DISTINCT b.BudgetID
+        FROM Budget b
+        JOIN ExpenseLineItem eli ON eli.ExpenseCategoryID = b.ExpenseCategoryID
+        WHERE eli.ExpenseID IN (SELECT ExpenseID FROM deleted)
+    );
+
+    DELETE FROM ApprovalLog     WHERE ExpenseID IN (SELECT ExpenseID FROM deleted);
     DELETE FROM ExpenseLineItem WHERE ExpenseID IN (SELECT ExpenseID FROM deleted);
     DELETE FROM ExpenseHeader   WHERE ExpenseID IN (SELECT ExpenseID FROM deleted);
 END;`

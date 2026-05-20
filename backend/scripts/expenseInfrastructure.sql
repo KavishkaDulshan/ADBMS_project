@@ -187,6 +187,7 @@ BEGIN
     END
 
     -- Cascade delete only for non-approved expenses
+    DELETE FROM ApprovalLog     WHERE ExpenseID IN (SELECT ExpenseID FROM deleted);
     DELETE FROM ExpenseLineItem WHERE ExpenseID IN (SELECT ExpenseID FROM deleted);
     DELETE FROM ExpenseHeader   WHERE ExpenseID IN (SELECT ExpenseID FROM deleted);
 END;
