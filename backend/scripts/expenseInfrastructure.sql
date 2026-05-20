@@ -124,3 +124,33 @@ BEGIN
     ) total_lines;
 END;
 GO
+
+CREATE OR ALTER TRIGGER dbo.trg_Supplier_Audit
+ON dbo.Supplier
+AFTER INSERT, UPDATE, DELETE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF EXISTS (SELECT 1 FROM inserted) AND NOT EXISTS (SELECT 1 FROM deleted)
+    BEGIN
+        INSERT INTO SystemAuditLog (TableName, ActionType, RecordID, OldValue, NewValue, ChangedDate)
+        SELECT 'Supplier', 'INSERT', i.SupplierID, NULL, (SELECT i.SupplierID, i.SupplierName, i.ContactEmail FOR JSON PATH, WITHOUT_ARRAY_WRAPPER), GETDATE()
+        FROM inserted i;
+    END
+    ELSE IF EXISTS (SELECT 1 FROM inserted) AND EXISTS (SELECT 1 FROM deleted)
+    BEGIN
+        INSERT INTO SystemAuditLog (TableName, ActionType, RecordID, OldValue, NewValue, ChangedDate)
+        SELECT 'Supplier', 'UPDATE', i.SupplierID, 
+        (SELECT d.SupplierID, d.SupplierName, d.ContactEmail FOR JSON PATH, WITHOUT_ARRAY_WRAPPER),
+        (SELECT i.SupplierID, i.SupplierName, i.ContactEmail FOR JSON PATH, WITHOUT_ARRAY_WRAPPER), GETDATE()
+        FROM inserted i JOIN deleted d ON i.SupplierID = d.SupplierID;
+    END
+    ELSE IF EXISTS (SELECT 1 FROM deleted) AND NOT EXISTS (SELECT 1 FROM inserted)
+    BEGIN
+        INSERT INTO SystemAuditLog (TableName, ActionType, RecordID, OldValue, NewValue, ChangedDate)
+        SELECT 'Supplier', 'DELETE', d.SupplierID, (SELECT d.SupplierID, d.SupplierName, d.ContactEmail FOR JSON PATH, WITHOUT_ARRAY_WRAPPER), NULL, GETDATE()
+        FROM deleted d;
+    END
+END;
+GO

@@ -35,6 +35,18 @@ WHERE e.StatusID = 2
 GROUP BY ec.ExpenseCategoryID, ec.CategoryName, YEAR(d.FullDate), MONTH(d.FullDate);`,
 
 // 2. Functions
+`CREATE OR ALTER VIEW vw_EmployeePerformance AS
+SELECT 
+    emp.EmployeeID,
+    emp.FirstName + ' ' + emp.LastName AS EmployeeName,
+    emp.Department,
+    COUNT(e.ExpenseID) AS TotalExpensesSubmitted,
+    SUM(CASE WHEN e.StatusID = 2 THEN e.TotalAmount ELSE 0 END) AS TotalApprovedSpend,
+    SUM(CASE WHEN e.StatusID = 3 THEN e.TotalAmount ELSE 0 END) AS TotalRejectedSpend
+FROM Employee emp
+LEFT JOIN ExpenseHeader e ON emp.EmployeeID = e.EmployeeID
+GROUP BY emp.EmployeeID, emp.FirstName, emp.LastName, emp.Department;`,
+
 `CREATE OR ALTER FUNCTION fn_GetBudgetUtilization(
     @CategoryID INT,
     @Month INT,
@@ -81,6 +93,23 @@ BEGIN
 END;`,
 
 // 3. Stored Procedures
+`CREATE OR ALTER FUNCTION fn_GetSupplierTotalSpend(
+    @SupplierID INT,
+    @Year INT
+)
+RETURNS DECIMAL(18,2)
+AS
+BEGIN
+    DECLARE @Total DECIMAL(18,2) = 0;
+    
+    SELECT @Total = SUM(e.TotalAmount)
+    FROM ExpenseHeader e
+    JOIN DateDimension d ON e.DateKey = d.DateKey
+    WHERE e.SupplierID = @SupplierID AND e.StatusID = 2 AND d.CalendarYear = @Year;
+    
+    RETURN ISNULL(@Total, 0);
+END;`,
+
 `CREATE OR ALTER PROCEDURE sp_GetDashboardStats
 AS
 BEGIN
@@ -237,6 +266,25 @@ BEGIN
 END;`,
 
 // 4. Triggers
+`CREATE OR ALTER PROCEDURE sp_GetEmployeeExpenseReport
+    @EmployeeID INT,
+    @Year INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    
+    -- Summary
+    SELECT * FROM vw_EmployeePerformance WHERE EmployeeID = @EmployeeID;
+    
+    -- Detailed breakdown
+    SELECT e.ExpenseID, e.TotalAmount, e.Description, s.StatusName, d.FullDate
+    FROM ExpenseHeader e
+    JOIN ExpenseStatus s ON e.StatusID = s.StatusID
+    JOIN DateDimension d ON e.DateKey = d.DateKey
+    WHERE e.EmployeeID = @EmployeeID AND d.CalendarYear = @Year
+    ORDER BY d.FullDate DESC;
+END;`,
+
 `CREATE OR ALTER TRIGGER trg_CheckBudgetOnLineItem
 ON ExpenseLineItem
 AFTER INSERT, UPDATE
