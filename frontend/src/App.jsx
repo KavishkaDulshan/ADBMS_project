@@ -12,7 +12,7 @@ import Login from './pages/Login';
 function App() {
   return (
     // import.meta.env.BASE_URL will automatically grab '/ADBMS_project/' from your vite.config.js
-    <Router basename={import.meta.env.BASE_URL}>
+<BrowserRouter> 
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<Dashboard />} />
