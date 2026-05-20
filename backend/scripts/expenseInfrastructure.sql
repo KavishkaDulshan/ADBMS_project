@@ -125,6 +125,9 @@ BEGIN
 END;
 GO
 
+-- ============================================================
+-- Trigger 3: Audit log for Supplier table changes
+-- ============================================================
 CREATE OR ALTER TRIGGER dbo.trg_Supplier_Audit
 ON dbo.Supplier
 AFTER INSERT, UPDATE, DELETE
@@ -135,22 +138,56 @@ BEGIN
     IF EXISTS (SELECT 1 FROM inserted) AND NOT EXISTS (SELECT 1 FROM deleted)
     BEGIN
         INSERT INTO SystemAuditLog (TableName, ActionType, RecordID, OldValue, NewValue, ChangedDate)
-        SELECT 'Supplier', 'INSERT', i.SupplierID, NULL, (SELECT i.SupplierID, i.SupplierName, i.ContactEmail FOR JSON PATH, WITHOUT_ARRAY_WRAPPER), GETDATE()
+        SELECT 'Supplier', 'INSERT', i.SupplierID, NULL,
+            (SELECT i.SupplierID, i.SupplierName, i.ContactEmail FOR JSON PATH, WITHOUT_ARRAY_WRAPPER),
+            GETDATE()
         FROM inserted i;
+        RETURN;
     END
-    ELSE IF EXISTS (SELECT 1 FROM inserted) AND EXISTS (SELECT 1 FROM deleted)
+
+    IF EXISTS (SELECT 1 FROM inserted) AND EXISTS (SELECT 1 FROM deleted)
     BEGIN
         INSERT INTO SystemAuditLog (TableName, ActionType, RecordID, OldValue, NewValue, ChangedDate)
-        SELECT 'Supplier', 'UPDATE', i.SupplierID, 
-        (SELECT d.SupplierID, d.SupplierName, d.ContactEmail FOR JSON PATH, WITHOUT_ARRAY_WRAPPER),
-        (SELECT i.SupplierID, i.SupplierName, i.ContactEmail FOR JSON PATH, WITHOUT_ARRAY_WRAPPER), GETDATE()
-        FROM inserted i JOIN deleted d ON i.SupplierID = d.SupplierID;
+        SELECT 'Supplier', 'UPDATE', i.SupplierID,
+            (SELECT d.SupplierID, d.SupplierName, d.ContactEmail FOR JSON PATH, WITHOUT_ARRAY_WRAPPER),
+            (SELECT i.SupplierID, i.SupplierName, i.ContactEmail FOR JSON PATH, WITHOUT_ARRAY_WRAPPER),
+            GETDATE()
+        FROM inserted i INNER JOIN deleted d ON d.SupplierID = i.SupplierID;
+        RETURN;
     END
-    ELSE IF EXISTS (SELECT 1 FROM deleted) AND NOT EXISTS (SELECT 1 FROM inserted)
+
+    IF EXISTS (SELECT 1 FROM deleted) AND NOT EXISTS (SELECT 1 FROM inserted)
     BEGIN
         INSERT INTO SystemAuditLog (TableName, ActionType, RecordID, OldValue, NewValue, ChangedDate)
-        SELECT 'Supplier', 'DELETE', d.SupplierID, (SELECT d.SupplierID, d.SupplierName, d.ContactEmail FOR JSON PATH, WITHOUT_ARRAY_WRAPPER), NULL, GETDATE()
+        SELECT 'Supplier', 'DELETE', d.SupplierID,
+            (SELECT d.SupplierID, d.SupplierName, d.ContactEmail FOR JSON PATH, WITHOUT_ARRAY_WRAPPER),
+            NULL, GETDATE()
         FROM deleted d;
     END
+END;
+GO
+
+-- ============================================================
+-- Trigger 4: INSTEAD OF DELETE — block deletion of approved expenses
+-- ============================================================
+CREATE OR ALTER TRIGGER dbo.trg_PreventDeleteApprovedExpense
+ON dbo.ExpenseHeader
+INSTEAD OF DELETE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF EXISTS (SELECT 1 FROM deleted WHERE StatusID = 2)
+    BEGIN
+        RAISERROR (
+            'Business Rule Violation: Approved expenses cannot be deleted. Reverse the approval first.',
+            16, 1
+        );
+        RETURN;
+    END
+
+    -- Cascade delete only for non-approved expenses
+    DELETE FROM ExpenseLineItem WHERE ExpenseID IN (SELECT ExpenseID FROM deleted);
+    DELETE FROM ExpenseHeader   WHERE ExpenseID IN (SELECT ExpenseID FROM deleted);
 END;
 GO

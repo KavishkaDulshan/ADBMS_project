@@ -3,31 +3,24 @@ const { getDBPool, sql } = require('../config/db');
 const getBudgets = async (req, res) => {
   try {
     const pool = await getDBPool();
-    
-    // We fetch budgets for the current month and year
-    // and calculate the actual spent amount from approved expenses
-    const result = await pool.request().query(`
-      SELECT 
-        b.BudgetID as id,
-        ec.ExpenseCategoryID as categoryId,
-        ec.CategoryName as category,
-        b.AllocatedAmount as budget,
-        ISNULL((
-            SELECT SUM(eli.LineTotal)
-            FROM ExpenseLineItem eli
-            JOIN ExpenseHeader eh ON eli.ExpenseID = eh.ExpenseID
-            JOIN DateDimension dd ON eh.DateKey = dd.DateKey
-            WHERE eli.ExpenseCategoryID = b.ExpenseCategoryID
-              AND MONTH(dd.FullDate) = b.BudgetMonth
-              AND YEAR(dd.FullDate) = b.BudgetYear
-              AND eh.StatusID = 2 -- 'Approved'
-        ), 0) as spent
-      FROM Budget b
-      JOIN ExpenseCategory ec ON b.ExpenseCategoryID = ec.ExpenseCategoryID
-      WHERE b.BudgetMonth = MONTH(GETDATE()) AND b.BudgetYear = YEAR(GETDATE())
-    `);
-    
-    res.json(result.recordset);
+
+    // sp_GetBudgetReport returns budget vs actual for the current month,
+    // plus BudgetStatus (SAFE/WARNING/CRITICAL) and PredictedNextMonth from UDFs
+    const result = await pool.request().query(`EXEC sp_GetBudgetReport`);
+
+    // Map to the shape the frontend expects
+    const budgets = result.recordset.map(row => ({
+      id:               row.BudgetID,
+      category:         row.CategoryName,
+      budget:           row.BudgetAmount,
+      spent:            row.ActualSpend,
+      variance:         row.Variance,
+      utilizationPct:   row.UtilizationPct,
+      status:           row.BudgetStatus,          // SAFE / WARNING / CRITICAL
+      predictedNext:    row.PredictedNextMonth,
+    }));
+
+    res.json(budgets);
   } catch (error) {
     console.error('Error in getBudgets:', error);
     res.status(500).json({ error: error.message });
