@@ -11,6 +11,7 @@ const getBudgets = async (req, res) => {
     // Map to the shape the frontend expects
     const budgets = result.recordset.map(row => ({
       id:               row.BudgetID,
+      categoryId:       row.ExpenseCategoryID,
       category:         row.CategoryName,
       budget:           row.BudgetAmount,
       spent:            row.ActualSpend,
