@@ -1,4 +1,3 @@
-import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/layout/Layout';
 import Card from '../components/ui/Card';
@@ -11,7 +10,7 @@ import { Plus, Filter, Download, Trash2, Edit2 } from 'lucide-react';
 
 const Expenses = () => {
   const navigate = useNavigate();
-  const { expenses, loading } = useExpenses();
+  const { expenses, loading, error, refresh } = useExpenses();
 
   const headers = ['ID', 'Date', 'Supplier', 'Employee', 'Description', 'Amount', 'Status', 'Actions'];
 
@@ -44,52 +43,67 @@ const Expenses = () => {
       </div>
 
       <Card className="border-none shadow-sm">
-        <Table
-          headers={headers}
-          data={expenses}
-          renderRow={(expense) => (
-            <>
-              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">#{expense.ExpenseID}</td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(expense.FullDate).toLocaleDateString()}</td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-semibold">{expense.SupplierName || '-'}</td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{expense.EmployedBy}</td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 max-w-xs truncate">{expense.Description}</td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">Rs. {parseFloat(expense.TotalAmount).toFixed(2)}</td>
-              <td className="px-6 py-4 whitespace-nowrap">
-                <Badge variant={getStatusVariant(expense.StatusName)}>{expense.StatusName}</Badge>
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                <div className="flex gap-3">
-                  <button className="text-blue-600 hover:text-blue-900 font-medium">View</button>
-                  <button className="text-gray-600 hover:text-gray-900" title="Edit (Coming Soon)">
-                    <Edit2 size={16} />
-                  </button>
-                  <button 
-                    className="text-red-600 hover:text-red-900" 
-                    title="Delete"
-                    onClick={async () => {
-                      if(window.confirm('Are you sure you want to delete this expense?')) {
-                        try {
-                          await deleteExpense(expense.ExpenseID);
-                          window.location.reload(); // Quick refresh
-                        } catch (err) {
-                          alert('Failed to delete expense.');
-                        }
-                      }
-                    }}
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              </td>
-            </>
-          )}
-        />
-        {loading && (
-          <div className="text-center py-10 text-gray-500">Loading expenses...</div>
+        {error && (
+          <div className="text-center py-6 text-red-500 bg-red-50 rounded-t-lg">
+            Failed to load expenses: {error}
+            <button className="ml-3 text-blue-600 hover:underline font-medium" onClick={refresh}>Retry</button>
+          </div>
         )}
-        {!loading && expenses.length === 0 && (
+        {loading && expenses.length === 0 ? (
+          <div className="text-center py-10 text-gray-500">Loading expenses...</div>
+        ) : expenses.length === 0 ? (
           <div className="text-center py-10 text-gray-500">No expenses found.</div>
+        ) : (
+          <Table
+            headers={headers}
+            data={expenses}
+            renderRow={(expense) => (
+              <>
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">#{expense.ExpenseID}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(expense.FullDate).toLocaleDateString()}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-semibold">{expense.SupplierName || '-'}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{expense.EmployedBy}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 max-w-xs truncate">{expense.Description}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">Rs. {parseFloat(expense.TotalAmount).toFixed(2)}</td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <Badge variant={getStatusVariant(expense.StatusName)}>{expense.StatusName}</Badge>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <div className="flex gap-3">
+                    <button
+                      className="text-blue-600 hover:text-blue-900 font-medium"
+                      onClick={() => navigate(`/expenses/${expense.ExpenseID}`)}
+                    >
+                      View
+                    </button>
+                    <button
+                      className="text-gray-600 hover:text-gray-900"
+                      title="Edit"
+                      onClick={() => navigate(`/expenses/${expense.ExpenseID}`, { state: { edit: true } })}
+                    >
+                      <Edit2 size={16} />
+                    </button>
+                    <button 
+                      className="text-red-600 hover:text-red-900" 
+                      title="Delete"
+                      onClick={async () => {
+                        if(window.confirm('Are you sure you want to delete this expense?')) {
+                          try {
+                            await deleteExpense(expense.ExpenseID);
+                            refresh();
+                          } catch (_err) {
+                            console.error('Delete expense failed:', _err);
+                            alert('Failed to delete expense.');
+                          }
+                      }}}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </td>
+              </>
+            )}
+          />
         )}
       </Card>
     </Layout>

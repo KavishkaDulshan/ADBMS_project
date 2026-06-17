@@ -1,8 +1,8 @@
-import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
 import Expenses from './pages/Expenses';
 import AddExpense from './pages/AddExpense';
+import ExpenseDetail from './pages/ExpenseDetail';
 import Budget from './pages/Budget';
 import Suppliers from './pages/Suppliers';
 import Approvals from './pages/Approvals';
@@ -18,6 +18,7 @@ function App() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/expenses" element={<Expenses />} />
         <Route path="/expenses/add" element={<AddExpense />} />
+        <Route path="/expenses/:id" element={<ExpenseDetail />} />
         <Route path="/budget" element={<Budget />} />
         <Route path="/suppliers" element={<Suppliers />} />
         <Route path="/approvals" element={<Approvals />} />
