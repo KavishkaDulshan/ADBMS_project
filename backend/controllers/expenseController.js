@@ -469,18 +469,26 @@ exports.approveExpense = async (req, res) => {
 };
 
 exports.updateExpense = async (req, res) => {
+    const timestamp = new Date().toISOString();
     const expenseId = Number.parseInt(req.params.id, 10);
     if (Number.isNaN(expenseId)) return res.status(400).json({ message: 'Invalid expense ID.' });
 
     try {
         const { description, totalAmount, paymentMethodId, employeeId, supplierId } = req.body;
         const pool = await getDBPool();
-        
-        // This is a simplified update that only updates the header
+
+        const existingExpense = await fetchExpenseById(pool, expenseId);
+        if (!existingExpense) {
+            return res.status(404).json({ message: 'Expense not found.' });
+        }
+
+        const oldTotal = existingExpense.TotalAmount;
+        const newTotal = Number(totalAmount);
+
         await pool.request()
             .input('id', sql.Int, expenseId)
             .input('desc', sql.VarChar(255), description)
-            .input('amount', sql.Decimal(18,2), totalAmount)
+            .input('amount', sql.Decimal(18,2), newTotal)
             .input('paymentId', sql.Int, paymentMethodId)
             .input('empId', sql.Int, employeeId)
             .input('supId', sql.Int, supplierId || null)
@@ -489,10 +497,40 @@ exports.updateExpense = async (req, res) => {
                 SET Description = @desc, TotalAmount = @amount, PaymentMethodID = @paymentId, EmployeeID = @empId, SupplierID = @supId
                 WHERE ExpenseID = @id
             `);
-            
-        res.json({ message: 'Expense updated successfully.' });
+
+        const lineItemsResult = await pool.request()
+            .input('expenseId', sql.Int, expenseId)
+            .query(`
+                SELECT LineItemID, UnitPrice
+                FROM ExpenseLineItem
+                WHERE ExpenseID = @expenseId
+            `);
+
+        const oldLineItems = lineItemsResult.recordset;
+        const scaleFactor = oldTotal > 0 ? newTotal / oldTotal : 0;
+
+        if (scaleFactor > 0 && oldLineItems.length > 0) {
+            for (const item of oldLineItems) {
+                const newUnitPrice = parseFloat((item.UnitPrice * scaleFactor).toFixed(2));
+                await pool.request()
+                    .input('lineItemId', sql.Int, item.LineItemID)
+                    .input('unitPrice', sql.Decimal(18, 2), newUnitPrice)
+                    .query(`
+                        UPDATE ExpenseLineItem
+                        SET UnitPrice = @unitPrice
+                        WHERE LineItemID = @lineItemId
+                    `);
+            }
+        }
+
+        const updatedExpense = await fetchExpenseById(pool, expenseId);
+        if (!updatedExpense) {
+            return res.status(404).json({ message: 'Expense not found after update.' });
+        }
+        
+        res.json({ message: 'Expense updated successfully.', expense: updatedExpense });
     } catch (err) {
-        console.error('Error updating expense:', err);
+        console.error(`[${timestamp}] [EXPENSES] [ERROR] Failed to update expense ${expenseId}:`, err);
         res.status(500).json({ message: 'Server error while updating expense.' });
     }
 };
@@ -503,23 +541,21 @@ exports.deleteExpense = async (req, res) => {
 
     try {
         const pool = await getDBPool();
-        const transaction = new sql.Transaction(pool);
-        await transaction.begin();
 
-        try {
-            await new sql.Request(transaction).input('id', sql.Int, expenseId).query('DELETE FROM ExpenseLineItem WHERE ExpenseID = @id');
-            await new sql.Request(transaction).input('id', sql.Int, expenseId).query('DELETE FROM ApprovalLog WHERE ExpenseID = @id');
-            await new sql.Request(transaction).input('id', sql.Int, expenseId).query('DELETE FROM Receipt WHERE ExpenseID = @id');
-            await new sql.Request(transaction).input('id', sql.Int, expenseId).query('DELETE FROM ExpenseHeader WHERE ExpenseID = @id');
-            
-            await transaction.commit();
-            res.json({ message: 'Expense deleted successfully.' });
-        } catch (txErr) {
-            await transaction.rollback();
-            throw txErr;
-        }
+        // trg_PreventDeleteApprovedExpense (INSTEAD OF DELETE) handles:
+        //   - Blocking approved expenses (StatusID=2)
+        //   - Cascading deletes for BudgetAlert, ApprovalLog, ExpenseLineItem, ExpenseHeader
+        await pool.request()
+            .input('id', sql.Int, expenseId)
+            .query('DELETE FROM ExpenseHeader WHERE ExpenseID = @id');
+
+        res.json({ message: 'Expense deleted successfully.' });
     } catch (err) {
         console.error('Error deleting expense:', err);
+        // If the trigger blocked it (approved expense), return 400 instead of 500
+        if (err.message && err.message.includes('Approved expenses cannot be deleted')) {
+            return res.status(400).json({ message: err.message });
+        }
         res.status(500).json({ message: 'Server error while deleting expense.' });
     }
 };
